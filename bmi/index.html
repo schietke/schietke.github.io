@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="BMI" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="theme-color" content="#0ea5a0" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#0f172a" media="(prefers-color-scheme: dark)" />
+  <meta name="description" content="BMI berechnen und Zielgewichte für BMI 20, 25 und 27,5 anzeigen" />
+  <link rel="manifest" href="manifest.json" />
+  <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+  <link rel="icon" type="image/png" sizes="32x32" href="favicon.png" />
+  <title>BMI-Rechner</title>
+  <style>
+    :root {
+      --bg: #f1f5f9;
+      --card: #ffffff;
+      --text: #0f172a;
+      --muted: #64748b;
+      --accent: #0ea5a0;
+      --accent-soft: #ccfbf1;
+      --border: #e2e8f0;
+      --danger: #dc2626;
+      --warn: #d97706;
+      --ok: #059669;
+      --info: #2563eb;
+      --shadow: 0 8px 30px rgba(15, 23, 42, 0.08);
+      --radius: 18px;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0f172a;
+        --card: #1e293b;
+        --text: #f8fafc;
+        --muted: #94a3b8;
+        --accent: #2dd4bf;
+        --accent-soft: #134e4a;
+        --border: #334155;
+        --danger: #f87171;
+        --warn: #fbbf24;
+        --ok: #34d399;
+        --info: #60a5fa;
+        --shadow: 0 8px 30px rgba(0, 0, 0, 0.35);
+      }
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      min-height: 100%;
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      -webkit-text-size-adjust: 100%;
+      -webkit-tap-highlight-color: transparent;
+    }
+    body {
+      padding:
+        max(16px, env(safe-area-inset-top))
+        max(16px, env(safe-area-inset-right))
+        max(24px, env(safe-area-inset-bottom))
+        max(16px, env(safe-area-inset-left));
+    }
+    .wrap {
+      max-width: 420px;
+      margin: 0 auto;
+    }
+    header {
+      text-align: center;
+      margin: 2px 0 14px;
+    }
+    header .badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 44px;
+      height: 44px;
+      border-radius: 16px;
+      background: var(--accent);
+      color: #fff;
+      font-weight: 800;
+      font-size: 15px;
+      letter-spacing: 0.5px;
+      margin-bottom: 8px;
+      box-shadow: 0 6px 16px rgba(14, 165, 160, 0.35);
+    }
+    h1 {
+      font-size: 1.55rem;
+      margin: 0 0 6px;
+      letter-spacing: -0.02em;
+    }
+    .subtitle {
+      color: var(--muted);
+      font-size: 0.95rem;
+      margin: 0;
+      line-height: 1.4;
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px;
+      box-shadow: var(--shadow);
+      margin-bottom: 12px;
+    }
+    label {
+      display: block;
+      font-size: 0.9rem;
+      font-weight: 600;
+      margin-bottom: 8px;
+      color: var(--text);
+    }
+    .field { margin-bottom: 12px; }
+    .field:last-child { margin-bottom: 0; }
+    .input-row {
+      display: flex;
+      align-items: stretch;
+      gap: 0;
+      border: 1.5px solid var(--border);
+      border-radius: 14px;
+      overflow: hidden;
+      background: var(--bg);
+      transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    }
+    .input-row:focus-within {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent);
+    }
+    input[type="text"], input[type="number"] {
+      flex: 1;
+      border: 0;
+      outline: 0;
+      background: transparent;
+      color: var(--text);
+      font-size: 17px;
+      padding: 14px 14px;
+      min-height: 52px;
+      width: 100%;
+      -moz-appearance: textfield;
+    }
+    input::-webkit-outer-spin-button,
+    input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+    .unit {
+      display: flex;
+      align-items: center;
+      padding: 0 14px;
+      color: var(--muted);
+      font-weight: 600;
+      font-size: 0.95rem;
+      background: color-mix(in srgb, var(--border) 35%, transparent);
+      border-left: 1px solid var(--border);
+      min-width: 52px;
+      justify-content: center;
+    }
+    .result-main {
+      text-align: center;
+      padding: 0;
+    }
+    .bmi-value {
+      font-size: 2.8rem;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      line-height: 1;
+      margin: 2px 0 8px;
+    }
+    .bmi-label {
+      color: var(--muted);
+      font-size: 0.85rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      font-weight: 600;
+    }
+    .category {
+      display: inline-block;
+      margin-top: 4px;
+      padding: 8px 14px;
+      border-radius: 999px;
+      font-weight: 700;
+      font-size: 0.95rem;
+      background: var(--accent-soft);
+      color: var(--accent);
+    }
+    .bmi-value.cat-uw { color: #2563eb; } .bmi-value.cat-nw { color: #059669; } .bmi-value.cat-uwg { color: #d97706; }
+    .bmi-value.cat-a1 { color: #ea580c; } .bmi-value.cat-a2 { color: #dc2626; } .bmi-value.cat-a3 { color: #b91c1c; }
+    .category.cat-uw { background: #dbeafe; color: #1d4ed8; }
+    .category.cat-nw { background: #d1fae5; color: #047857; }
+    .category.cat-uwg { background: #fef3c7; color: #b45309; }
+    .category.cat-a1 { background: #ffedd5; color: #c2410c; }
+    .category.cat-a2 { background: #fee2e2; color: #b91c1c; }
+    .category.cat-a3 { background: #fecaca; color: #991b1b; }
+    @media (prefers-color-scheme: dark) {
+      .category.cat-uw { background: #1e3a5f; color: #93c5fd; }
+      .category.cat-nw { background: #064e3b; color: #6ee7b7; }
+      .category.cat-uwg { background: #78350f; color: #fcd34d; }
+      .category.cat-a1 { background: #7c2d12; color: #fdba74; }
+      .category.cat-a2 { background: #7f1d1d; color: #fca5a5; }
+      .category.cat-a3 { background: #450a0a; color: #f87171; }
+    }
+    .placeholder {
+      color: var(--muted);
+      font-size: 0.95rem;
+      text-align: center;
+      padding: 12px 8px;
+    }
+    h2 {
+      font-size: 1.05rem;
+      margin: 0 0 12px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 1rem;
+    }
+    th, td {
+      text-align: left;
+      padding: 10px 6px;
+      border-bottom: 1px solid var(--border);
+    }
+    tr:last-child th, tr:last-child td { border-bottom: 0; }
+    th {
+      color: var(--muted);
+      font-weight: 600;
+      font-size: 0.85rem;
+    }
+    td.weight {
+      text-align: right;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      font-size: 1.05rem;
+    }
+    .hint {
+      margin-top: 12px;
+      color: var(--muted);
+      font-size: 0.82rem;
+      line-height: 1.45;
+    }
+    footer {
+      text-align: center;
+      color: var(--muted);
+      font-size: 0.78rem;
+      margin-top: 18px;
+      line-height: 1.45;
+      padding: 0 8px;
+    }
+    .install-tip {
+      background: var(--accent-soft);
+      color: var(--text);
+      border-radius: 14px;
+      padding: 10px 12px;
+      font-size: 0.82rem;
+      line-height: 1.4;
+      margin-bottom: 12px;
+      border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
+    }
+    .install-tip strong { color: var(--accent); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div class="badge" aria-hidden="true">BMI</div>
+      <h1>BMI-Rechner</h1>
+      <p class="subtitle">Body-Mass-Index &amp; Zielgewichte für deine Größe</p>
+    </header>
+
+    <div class="install-tip" id="installTip">
+      <strong>Zum Home-Bildschirm:</strong> In Safari unten auf Teilen tippen, dann „Zum Home-Bildschirm“. Danach wie eine App öffnen.
+    </div>
+
+    <section class="card" aria-label="Eingabe">
+      <div class="field">
+        <label for="height">Größe</label>
+        <div class="input-row">
+          <input id="height" type="text" inputmode="decimal" autocomplete="off" enterkeyhint="next" placeholder="z. B. 180" aria-describedby="heightHint" />
+          <span class="unit">cm</span>
+        </div>
+      </div>
+      <div class="field">
+        <label for="weight">Gewicht</label>
+        <div class="input-row">
+          <input id="weight" type="text" inputmode="decimal" autocomplete="off" enterkeyhint="done" placeholder="z. B. 72,5" />
+          <span class="unit">kg</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="card" aria-live="polite" aria-label="BMI-Ergebnis">
+      <div id="bmiResult" class="placeholder">Größe und Gewicht eingeben, um den BMI zu sehen.</div>
+    </section>
+
+    <section class="card" aria-live="polite" aria-label="Zielgewichte">
+      <h2>Zielgewichte für deine Größe</h2>
+      <div id="targets">
+        <p class="placeholder">Größe eingeben – dann erscheinen die Gewichte für BMI 20, 25 und 27,5.</p>
+      </div>
+      <p class="hint">Formel: Gewicht (kg) = BMI × Größe (m)². Orientierungs­werte nach WHO; kein Ersatz für medizinische Beratung.</p>
+    </section>
+
+    <footer>
+      WHO-Kategorien: Untergewicht &lt;18,5 · Normalgewicht 18,5–24,9 · Übergewicht 25–29,9 · Adipositas Grad I/II/III ab 30 / 35 / 40
+    </footer>
+  </div>
+
+  <script>
+    (function () {
+      const heightEl = document.getElementById("height");
+      const weightEl = document.getElementById("weight");
+      const bmiResult = document.getElementById("bmiResult");
+      const targetsEl = document.getElementById("targets");
+      const STORAGE_KEY = "bmi-app-height-cm";
+
+      function parseDE(str) {
+        if (str == null) return NaN;
+        const s = String(str).trim().replace(/\s+/g, "").replace(",", ".");
+        if (!s) return NaN;
+        const n = Number(s);
+        return Number.isFinite(n) ? n : NaN;
+      }
+
+      function formatDE(n, digits) {
+        return n.toFixed(digits).replace(".", ",");
+      }
+
+      function categoryFor(bmi) {
+        if (bmi < 18.5) return { label: "Untergewicht", cls: "cat-uw" };
+        if (bmi < 25) return { label: "Normalgewicht", cls: "cat-nw" };
+        if (bmi < 30) return { label: "Übergewicht", cls: "cat-uwg" };
+        if (bmi < 35) return { label: "Adipositas Grad I", cls: "cat-a1" };
+        if (bmi < 40) return { label: "Adipositas Grad II", cls: "cat-a2" };
+        return { label: "Adipositas Grad III", cls: "cat-a3" };
+      }
+
+      function weightForBMI(bmi, heightCm) {
+        const m = heightCm / 100;
+        return bmi * m * m;
+      }
+
+      function render() {
+        const h = parseDE(heightEl.value);
+        const w = parseDE(weightEl.value);
+
+        // Persist height
+        if (Number.isFinite(h) && h > 0) {
+          try { localStorage.setItem(STORAGE_KEY, heightEl.value.trim()); } catch (_) {}
+        }
+
+        // Targets from height alone
+        if (Number.isFinite(h) && h >= 50 && h <= 280) {
+          const rows = [
+            { bmi: 20, note: "unteres Normalgewicht" },
+            { bmi: 25, note: "Grenze Übergewicht" },
+            { bmi: 27.5, note: "mittleres Übergewicht" }
+          ];
+          let html = "<table><thead><tr><th>BMI</th><th>Bedeutung</th><th style=\"text-align:right\">Gewicht</th></tr></thead><tbody>";
+          for (const r of rows) {
+            const kg = weightForBMI(r.bmi, h);
+            html += `<tr><th>${formatDE(r.bmi, r.bmi % 1 === 0 ? 0 : 1)}</th><td>${r.note}</td><td class="weight">${formatDE(kg, 1)} kg</td></tr>`;
+          }
+          html += "</tbody></table>";
+          targetsEl.innerHTML = html;
+        } else {
+          targetsEl.innerHTML = '<p class="placeholder">Größe eingeben – dann erscheinen die Gewichte für BMI 20, 25 und 27,5.</p>';
+        }
+
+        // BMI from height + weight
+        if (Number.isFinite(h) && h >= 50 && h <= 280 && Number.isFinite(w) && w > 0 && w < 500) {
+          const m = h / 100;
+          const bmi = w / (m * m);
+          const cat = categoryFor(bmi);
+          bmiResult.innerHTML =
+            '<div class="result-main">' +
+            '<div class="bmi-label">Dein BMI</div>' +
+            '<div class="bmi-value ' + cat.cls + '">' + formatDE(bmi, 1) + '</div>' +
+            '<span class="category ' + cat.cls + '">' + cat.label + '</span>' +
+            '</div>';
+        } else if (Number.isFinite(h) && h >= 50 && h <= 280) {
+          bmiResult.innerHTML = '<p class="placeholder">Noch Gewicht eingeben, um den BMI zu berechnen.</p>';
+        } else {
+          bmiResult.innerHTML = '<p class="placeholder">Größe und Gewicht eingeben, um den BMI zu sehen.</p>';
+        }
+      }
+
+      // Restore last height
+      try {
+        const saved = localStorage.getItem(STORAGE_KEY);
+        if (saved) heightEl.value = saved;
+      } catch (_) {}
+
+      heightEl.addEventListener("input", render);
+      weightEl.addEventListener("input", render);
+      render();
+
+      // Hide install tip if already standalone
+      if (window.navigator.standalone === true || window.matchMedia("(display-mode: standalone)").matches) {
+        const tip = document.getElementById("installTip");
+        if (tip) tip.style.display = "none";
+      }
+
+      if ("serviceWorker" in navigator) {
+        window.addEventListener("load", function () {
+          navigator.serviceWorker.register("./sw.js").catch(function () {});
+        });
+      }
+    })();
+  </script>
+</body>
+</html>
