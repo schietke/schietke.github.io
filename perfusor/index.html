@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-title" content="Perfusor" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="theme-color" content="#2563eb" media="(prefers-color-scheme: light)" />
+<meta name="theme-color" content="#0f172a" media="(prefers-color-scheme: dark)" />
+<meta name="description" content="Perfusor-Laufraten in ml/h" />
+<link rel="manifest" href="manifest.json" />
+<link rel="apple-touch-icon" href="apple-touch-icon.png" />
+<link rel="icon" type="image/png" sizes="32x32" href="favicon.png" />
+<title>Perfusor-Rechner</title>
+<style>
+:root{--bg:#f1f5f9;--card:#fff;--text:#0f172a;--muted:#64748b;--accent:#2563eb;--border:#e2e8f0;--head:#eff6ff;--shadow:0 8px 30px rgba(15,23,42,.08)}
+@media (prefers-color-scheme:dark){:root{--bg:#0f172a;--card:#1e293b;--text:#f8fafc;--muted:#94a3b8;--accent:#60a5fa;--border:#334155;--head:#172554;--shadow:0 8px 30px rgba(0,0,0,.35)}}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,Helvetica,Arial,sans-serif;-webkit-text-size-adjust:100%;-webkit-tap-highlight-color:transparent}
+body{padding:max(14px,env(safe-area-inset-top)) max(10px,env(safe-area-inset-right)) max(24px,env(safe-area-inset-bottom)) max(10px,env(safe-area-inset-left))}
+.wrap{max-width:560px;margin:0 auto}
+h1{font-size:1.4rem;margin:2px 0 12px;text-align:center;letter-spacing:-.02em}
+.card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:12px;box-shadow:var(--shadow);margin-bottom:12px}
+.sticky{position:sticky;top:max(6px,env(safe-area-inset-top));z-index:5}
+label{display:block;font-weight:600;font-size:.9rem;margin-bottom:6px}
+.row{display:flex;border:1.5px solid var(--border);border-radius:14px;overflow:hidden;background:var(--bg)}
+.row:focus-within{border-color:var(--accent)}
+input{flex:1;min-width:0;border:0;outline:0;background:transparent;color:var(--text);font-size:20px;font-weight:600;padding:12px 14px;min-height:52px}
+.unit{display:flex;align-items:center;padding:0 16px;color:var(--muted);font-weight:600;border-left:1px solid var(--border)}
+h2{font-size:1.05rem;margin:0 0 2px}
+.sub{color:var(--muted);font-size:.78rem;margin:0 0 8px}
+table{width:100%;border-collapse:collapse;table-layout:fixed;font-variant-numeric:tabular-nums}
+th,td{padding:9px 3px;text-align:center;border-bottom:1px solid var(--border);font-size:.95rem}
+tr:last-child td,tr:last-child th{border-bottom:0}
+thead th{background:var(--head);font-size:.78rem;color:var(--muted);font-weight:700;padding:7px 2px}
+thead th:first-child{border-radius:8px 0 0 8px}thead th:last-child{border-radius:0 8px 8px 0}
+th.rl{text-align:left;font-weight:700;width:36%;padding-left:6px;font-size:.88rem;line-height:1.25}
+th.rl small{display:block;color:var(--muted);font-weight:500;font-size:.72rem}
+td{font-weight:700;font-size:1.02rem}
+.notice{font-size:.8rem;color:var(--muted);text-align:center;line-height:1.45;padding:4px 8px}
+</style>
+</head>
+<body>
+<div class="wrap">
+<h1>Perfusor-Rechner</h1>
+<section class="card sticky">
+  <label for="weight">Patientengewicht</label>
+  <div class="row"><input id="weight" type="text" inputmode="decimal" autocomplete="off" placeholder="z. B. 70" /><span class="unit">kg</span></div>
+</section>
+<div id="tables"></div>
+<p class="notice">Hilfsmittel zur Orientierung. Alle Werte vor der Anwendung prüfen, keine Gewähr; Verantwortung liegt beim Anwender.</p>
+</div>
+<script>
+(function(){
+  // conc: Menge in µg bzw. mg, Volumen in ml. mode: "min" = dose in µg/kg/min, "h" = dose in mg/kg/h
+  var DATA=[
+   {title:"Remifentanil",sub:"Dosis in µg/kg/min · Ergebnis in ml/h",unit:"µg/kg/min",perMin:true,massUnit:"µg",
+    doses:[0.1,0.3,0.5],
+    rows:[{label:"1 mg / 50 ml",amount:1000,vol:50},{label:"2 mg / 50 ml",amount:2000,vol:50},{label:"5 mg / 50 ml",amount:5000,vol:50}]},
+   {title:"Propofol",sub:"Dosis in mg/kg/h · Ergebnis in ml/h",unit:"mg/kg/h",perMin:false,massUnit:"mg",
+    doses:[2,4,6,8],
+    rows:[{label:"1 %",amount:10,vol:1},{label:"2 %",amount:20,vol:1}]},
+   {title:"Noradrenalin",sub:"Dosis in µg/kg/min · Ergebnis in ml/h",unit:"µg/kg/min",perMin:true,massUnit:"µg",
+    doses:[0.05,0.1,0.3],
+    rows:[{label:"1 mg / 100 ml",amount:1000,vol:100},{label:"1 mg / 50 ml",amount:1000,vol:50},{label:"3 mg / 50 ml",amount:3000,vol:50},{label:"5 mg / 50 ml",amount:5000,vol:50},{label:"25 mg / 50 ml",amount:25000,vol:50}]}
+  ];
+  var KEY="perfusor-weight-kg",wEl=document.getElementById("weight"),host=document.getElementById("tables");
+  function de(n,d){return n.toFixed(d).replace(".",",")}
+  function fmtDose(x){return String(x).replace(".",",")}
+  function fmtConc(c,mu){ // c in µg/ml (µ) or mg/ml
+    if(mu==="µg"){return c>=1000?de(c/1000,c%1000?1:0)+" mg/ml":de(c,c%1?1:0)+" µg/ml"}
+    return de(c,c%1?1:0)+" mg/ml";}
+  function fmtRate(v){return v<1?de(v,2):de(v,1)}
+  function calc(dose,w,conc,perMin){return dose*w*(perMin?60:1)/conc}
+  window.__calc=calc;window.__fmt=fmtRate;
+  function parse(s){var n=Number(String(s).trim().replace(/\s+/g,"").replace(",","."));return isFinite(n)?n:NaN}
+  function render(){
+    var w=parse(wEl.value),ok=isFinite(w)&&w>=1&&w<=400;
+    if(ok){try{localStorage.setItem(KEY,wEl.value.trim())}catch(e){}}
+    var h="";
+    DATA.forEach(function(g){
+      h+='<section class="card"><h2>'+g.title+'</h2><p class="sub">'+g.sub+'</p><table><thead><tr><th></th>';
+      g.doses.forEach(function(d){h+='<th>'+fmtDose(d)+'<br>'+g.unit+'</th>'});
+      h+='</tr></thead><tbody>';
+      g.rows.forEach(function(r){
+        var c=r.amount/r.vol;
+        h+='<tr><th class="rl">'+r.label+'<small>'+fmtConc(c,g.massUnit)+'</small></th>';
+        g.doses.forEach(function(d){h+='<td>'+(ok?fmtRate(calc(d,w,c,g.perMin)):'–')+'</td>'});
+        h+='</tr>';
+      });
+      h+='</tbody></table></section>';
+    });
+    host.innerHTML=h;
+  }
+  try{var s=localStorage.getItem(KEY);if(s)wEl.value=s}catch(e){}
+  wEl.addEventListener("input",render);render();
+  if("serviceWorker" in navigator)window.addEventListener("load",function(){navigator.serviceWorker.register("./sw.js").catch(function(){})});
+})();
+</script>
+</body>
+</html>
