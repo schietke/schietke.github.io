@@ -1,4 +1,4 @@
-const CACHE = "vokabel-trainer-v2";
+const CACHE = "vokabel-trainer-v3";
 const ASSETS = [
   "./",
   "./index.html",
@@ -23,8 +23,25 @@ self.addEventListener("activate", (e) => {
   );
 });
 
+// Seite und Vokabelliste: zuerst Netz (max. 3 s), sonst Cache → Updates kommen ohne Tricks an.
+// Übrige Dateien (Icons, Video): zuerst Cache.
+function fromNetwork(req){
+  return new Promise((resolve,reject)=>{
+    const t=setTimeout(()=>reject(new Error("timeout")),3000);
+    fetch(req,{cache:"no-cache"}).then((res)=>{clearTimeout(t);
+      if(res&&res.ok){const copy=res.clone();caches.open(CACHE).then((c)=>c.put(req,copy))}
+      resolve(res)}).catch((e)=>{clearTimeout(t);reject(e)});
+  });
+}
 self.addEventListener("fetch", (e) => {
   if (e.request.method !== "GET") return;
+  const url = new URL(e.request.url);
+  const fresh = e.request.mode === "navigate" || /\/(index\.html|vocab\.json|manifest\.json)?$/.test(url.pathname);
+  if (fresh) {
+    e.respondWith(fromNetwork(e.request).catch(() =>
+      caches.match(e.request, {ignoreSearch:true}).then((c) => c || caches.match("./index.html"))));
+    return;
+  }
   e.respondWith(
     caches.match(e.request).then((cached) => cached || fetch(e.request).then((res) => {
       const copy = res.clone();

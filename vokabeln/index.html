@@ -85,7 +85,7 @@ button.s{border:1px solid var(--border);background:var(--bg);color:var(--text);b
 </section>
 <section class="card">
   <h2>Sprachbefehle</h2>
-  <p class="cmds"><b>„remove“</b> (oder „delete“, „skip this word“) – Wort nie mehr abfragen<br><b>„repeat“</b> – deutschen Begriff nochmal hören<br><b>„stop“</b> oder <b>„pause“</b> – Durchgang beenden</p>
+  <p class="cmds"><b>„remove“</b> (oder „delete“, „skip this word“) – Wort nie mehr abfragen<br><b>„repeat“</b> – deutschen Begriff nochmal hören<br><b>„stop“</b> – Durchgang beenden</p>
 </section>
 <section class="card">
   <details id="setd"><summary>Einstellungen</summary>
@@ -96,6 +96,7 @@ button.s{border:1px solid var(--border);background:var(--bg);color:var(--text);b
     <div class="set"><label for="nMax">Max. Abfragen</label><input id="nMax" type="range" min="10" max="100" step="5"><span class="v" id="nMaxV"></span></div>
     <div class="set"><label for="vEn">Englische Stimme</label><select id="vEn"></select></div>
     <div class="set"><label for="vDe">Deutsche Stimme</label><select id="vDe"></select></div>
+    <div class="set"><label for="recL">Erkennung</label><select id="recL"><option value="en-US">Englisch (USA)</option><option value="en-GB">Englisch (UK)</option></select></div>
     <div class="set"><label>Themen</label><span class="chk"><label><input type="checkbox" id="cA"> Anästhesie</label><label><input type="checkbox" id="cM"> Medizin</label><label><input type="checkbox" id="cT"> Reisen</label></span></div>
     <div class="set"><label for="show">Wort anzeigen</label><input id="show" type="checkbox"></div>
     <div class="set"><span>Fortschritt</span><button class="s" id="reset" type="button">Zurücksetzen</button></div>
@@ -151,48 +152,71 @@ var Core=(function(){
   // Abstand einer Äußerung zu einem Zielbegriff (0 = exakt), Infinity = zu weit weg
   var FILL={uh:1,um:1,uhm:1,er:1,erm:1,ah:1,hm:1,hmm:1,it:1,its:1,is:1,i:1,think:1,maybe:1,so:1,okay:1,ok:1,well:1,please:1,yes:1,yeah:1,oh:1,and:1,like:1,that:1,thats:1,s:1};
   function stripFill(h){var w=h.split(" ");while(w.length>1&&FILL[w[0]])w.shift();while(w.length>1&&FILL[w[w.length-1]])w.pop();return w.join(" ")}
-  function dist(heard,t){
+  var CLIP=100; // Kennwert für "Wortanfang abgeschnitten"-Treffer (schwächste Stufe)
+  // Abgeschnittener Wortanfang: gehörtes Wort ≈ Ende des Zielworts (z. B. "dance" ≈ "ambuLANCE", "ear" ≈ "laryngEAL")
+  function suffixLike(hw,tw,minRatio,minLen){
+    if(hw.length<minLen||hw.length>=tw.length||hw.length<tw.length*minRatio)return false;
+    var lim=hw.length>=6?2:1;
+    for(var L=hw.length-1;L<=hw.length+1;L++){if(L<1||L>tw.length)continue;if(lev(hw,tw.slice(-L))<=lim)return true}
+    return false;
+  }
+  function wordLike(hw,tw){return hw===tw||lev(hw,tw)<=tol(tw.length)||(phon(tw).length>=3&&phon(hw)===phon(tw))}
+  // Abstand einer Äußerung zu einem Zielbegriff (0 = exakt), Infinity = zu weit weg
+  function dist(heard,t,clip){
     var h=canon(heard);if(!h)return Infinity;
     if(h===t)return 0;
     var hs=h.replace(/ /g,""),ts=t.replace(/ /g,"");
     if(hs===ts)return 0;
-    var best=lev(hs,ts),core=null;
+    var best=lev(hs,ts),core=stripFill(h);
     // Füllwörter vorne/hinten ignorieren, z. B. "uh anesthesia", "it's anesthesia", "anesthesia please"
-    core=stripFill(h);if(core&&core!==h){var cs=core.replace(/ /g,"");if(cs===ts)return 0;best=Math.min(best,lev(cs,ts))}
+    var cs=core.replace(/ /g,"");
+    if(core!==h){if(cs===ts)return 0;best=Math.min(best,lev(cs,ts))}
     if(best<=tol(ts.length))return best;
-    // phonetisch fast gleich → als (unscharfer) Treffer werten, wenn das Wort lang genug ist
+    // phonetisch fast gleich
     var pt=phon(ts);
-    if(pt.length>=4){var ph=phon(core||h);if(ph===pt||(pt.length>=6&&lev(ph,pt)<=1))return tol(ts.length)+1}
+    if(pt.length>=4){var ph=phon(cs);if(ph===pt||(pt.length>=6&&lev(ph,pt)<=1))return tol(ts.length)+1}
+    if(!clip)return Infinity;
+    var tw=t.split(" "),hw=core.split(" ");
+    if(tw.length===1){
+      // Einzelwort mit abgeschnittenem Anfang (mind. die Hälfte des Worts gehört)
+      if(hw.length===1&&suffixLike(cs,ts,0.5,5))return CLIP;
+    }else if(hw.length===tw.length){
+      // Mehrwort: hintere Wörter passen, erstes Wort nur am Ende gehört ("ear mask" ≈ "laryngeal mask")
+      var ok=true;for(var i=1;i<tw.length;i++)if(!wordLike(hw[i],tw[i])){ok=false;break}
+      if(ok&&(wordLike(hw[0],tw[0])||suffixLike(hw[0],tw[0],0,2)))return CLIP;
+    }
     return Infinity;
   }
-  function bestDist(heard,w){var ts=targets(w),b=Infinity;for(var i=0;i<ts.length;i++)b=Math.min(b,dist(heard,ts[i]));return b}
-  // vocab optional: unscharfe Treffer werden abgelehnt, wenn eine ANDERE Vokabel näher liegt
+  function bestDist(heard,w,clip){var ts=targets(w),b=Infinity;for(var i=0;i<ts.length;i++)b=Math.min(b,dist(heard,ts[i],clip));return b}
+  // Unscharfe Treffer werden abgelehnt, wenn eine ANDERE Vokabel näher liegt
   // (z. B. "hypertension" ist nicht "hypotension", "intubation" nicht "extubation")
   function isMatch(heardList,w,vocab){
     if(!Array.isArray(heardList))heardList=[heardList];
     vocab=vocab||VOCAB_REF;
     return heardList.some(function(h){
-      var d=bestDist(h,w);if(d===Infinity)return false;if(d===0)return true;
-      if(vocab)for(var i=0;i<vocab.length;i++){var o=vocab[i];if(o===w||o.id===w.id)continue;
-        var ts=targets(o),hc=canon(h).replace(/ /g,"");
+      var d=bestDist(h,w,true);if(d===Infinity)return false;if(d===0)return true;
+      if(!vocab)return true;
+      var hc=canon(h).replace(/ /g,"");
+      for(var i=0;i<vocab.length;i++){var o=vocab[i];if(o===w||o.id===w.id)continue;
+        if(d===CLIP){if(bestDist(h,o,false)!==Infinity)return false;continue}
+        var ts=targets(o);
         for(var k=0;k<ts.length;k++){if(lev(hc,ts[k].replace(/ /g,""))<d)return false}}
       return true;
     });
   }
   var VOCAB_REF=null;function setVocab(v){VOCAB_REF=v}
-  // Sprachbefehle (werden erst geprüft, wenn die Antwort NICHT passt)
-  var CMDS=[
-    ["exclude",/\b(remove|delete|skip this word|remove this word|delete this word|never again|entfernen|loschen)\b/],
-    ["stop",/^(stop|pause|stop session|end session|beenden|stopp|ende)$/],
-    ["repeat",/^(repeat|again|say again|repeat please|wiederholen|nochmal)$/]
-  ];
-  function command(heardList){
-    if(!Array.isArray(heardList))heardList=[heardList];
-    for(var i=0;i<heardList.length;i++){
-      var h=String(heardList[i]||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-z ]+/g," ").replace(/\s+/g," ").trim();
-      for(var k=0;k<CMDS.length;k++)if(CMDS[k][1].test(h))return CMDS[k][0];
-    }
-    return null;
+  // Sprachbefehle: nur wenn die GANZE Äußerung exakt einem Befehl entspricht
+  // und der Befehl nicht wie die gesuchte Vokabel klingt ("pause" ist KEIN Befehl mehr)
+  var CMDS={"remove":"exclude","delete":"exclude","skip this word":"exclude","remove this word":"exclude","delete this word":"exclude","remove word":"exclude",
+    "stop":"stop","stop session":"stop","stop now":"stop","end session":"stop",
+    "repeat":"repeat","again":"repeat","say again":"repeat","repeat please":"repeat"};
+  function command(text,w){
+    if(Array.isArray(text))text=text[0];
+    var h=String(text||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-z ]+/g," ").replace(/\s+/g," ").trim();
+    h=stripFill(h);
+    var c=CMDS[h];if(!c)return null;
+    if(w){var pc=phon(h.replace(/ /g,""));var ts=targets(w);for(var i=0;i<ts.length;i++){var pt=phon(ts[i]);if(pt===pc||lev(pt,pc)<=1||ts[i].split(" ").indexOf(h)>=0)return null}}
+    return c;
   }
   function dayNum(d){d=d||new Date();return Math.floor((d.getTime()-d.getTimezoneOffset()*60000)/86400000)}
   function emptyState(){return {v:1,cards:{},ex:{},hist:[]}}
@@ -257,7 +281,7 @@ if(typeof module!=="undefined")module.exports=Core;
   var st,cfg;
   try{st=JSON.parse(localStorage.getItem(KEY))}catch(e){}
   if(!st||!st.cards)st=Core.emptyState();
-  var DEF={rate:0.9,wait:8,nNew:10,nMax:40,vEn:"",vDe:"",cats:{A:1,M:1,T:1},show:true};
+  var DEF={rate:0.9,wait:8,nNew:10,nMax:40,vEn:"",vDe:"",recLang:"en-US",cats:{A:1,M:1,T:1},show:true};
   try{cfg=Object.assign({},DEF,JSON.parse(localStorage.getItem(SKEY))||{})}catch(e){cfg=Object.assign({},DEF)}
   function save(){try{localStorage.setItem(KEY,JSON.stringify(st))}catch(e){}}
   function saveCfg(){try{localStorage.setItem(SKEY,JSON.stringify(cfg))}catch(e){}}
@@ -286,15 +310,15 @@ if(typeof module!=="undefined")module.exports=Core;
       sel.innerHTML=h;sel.value=cfg[p[0]]||"";
     });
   }
-  var curUtt=null;
+  var curUtt=null,lastSpoken="";
   function speak(text,lang){
     return new Promise(function(res){
       if(!synth){res();return}
       var u=new SpeechSynthesisUtterance(text),v=pickVoice(lang);
       u.lang=v?v.lang:(lang==="de"?"de-DE":"en-GB");if(v)u.voice=v;
       u.rate=cfg.rate;u.pitch=1;u.volume=1;
-      var done=false,fin=function(){if(done)return;done=true;clearTimeout(t);curUtt=null;setTimeout(res,180)};
-      u.onend=fin;u.onerror=fin;curUtt=u;
+      var done=false,fin=function(){if(done)return;done=true;clearTimeout(t);curUtt=null;setTimeout(res,90)};
+      u.onend=fin;u.onerror=fin;curUtt=u;lastSpoken=text;
       // Sicherheitsnetz: iOS feuert onend manchmal nicht
       var t=setTimeout(fin,2500+text.length*140/cfg.rate);
       try{synth.speak(u)}catch(e){fin()}
@@ -327,7 +351,7 @@ if(typeof module!=="undefined")module.exports=Core;
         if(done)return;done=true;clearTimeout(t);clearTimeout(silence);if(curRec===r)curRec=null;setMic(false);
         try{r.abort()}catch(e){}
         dbg({w:label,alts:alts.slice(),info:r.lang+" · Start "+(tStart?tStart-t0:"–")+" ms · Sprache "+(tSpeech?tSpeech-t0:"–")+" ms · Ende: "+why+(err?" · Fehler "+err:"")+(restarts?" · Neustarts "+restarts:"")});
-        setTimeout(function(){res({alts:alts,err:err})},80);
+        setTimeout(function(){res({alts:alts,err:err,last:last})},60);
       };
       r.onstart=function(){if(!live())return;if(!tStart)tStart=Date.now();setMic(true)};
       r.onspeechstart=function(){if(live()&&!tSpeech)tSpeech=Date.now()};
@@ -340,12 +364,14 @@ if(typeof module!=="undefined")module.exports=Core;
           for(var k=0;k<R.length;k++){var tx=(R[k].transcript||"").trim();if(tx)now.push(tx);if(k===0&&tx)best.push(tx)}
         }
         if(best.length>1)now.push(best.join(" "));
+        // Echo: die eigene Ansage kommt über den Lautsprecher zurück → kurz nach Start identische Erkennung ignorieren
+        if(Date.now()-t0<700&&lastSpoken&&now.length&&now.every(function(x){return Core.canon(x)===Core.canon(lastSpoken)})){dbg({w:label,alts:now,info:"Echo verworfen"});return}
         now.forEach(function(x){if(alts.indexOf(x)<0)alts.push(x)});
         last=best.join(" ")||now[0]||"";
         heardEl.textContent=last?"„"+last+"“":"";
         if(accept&&accept(now)){finish("Treffer");return}
         clearTimeout(silence);
-        silence=setTimeout(function(){if(live())finish(anyFinal?"Stille nach Ergebnis":"Stille")},anyFinal?1300:1800);
+        silence=setTimeout(function(){if(live())finish(anyFinal?"Stille nach Ergebnis":"Stille")},anyFinal?2000:2400);
       };
       r.onerror=function(e){if(!live())return;var x=e.error||"error";if(x==="no-speech"||x==="aborted")return;err=x;finish("Fehler")};
       r.onend=function(){
@@ -393,12 +419,12 @@ if(typeof module!=="undefined")module.exports=Core;
   async function answer(w){
     heardEl.textContent="";
     // kurze Pause nach der Sprachausgabe, damit das Mikrofon nicht das Ende der eigenen Ansage aufnimmt
-    await new Promise(function(r){setTimeout(r,150)});
+    await new Promise(function(r){setTimeout(r,40)});
     var res=await listen(cfg.wait*1000,function(a){return Core.isMatch(a,w)},w.de+" → "+w.en);
     if(res.err&&res.err!=="unsupported"&&/not-allowed|service-not-allowed|audio-capture/.test(res.err)){fatal=res.err;stopReq=true;return "stop"}
     if(res.err==="network"){fatal="network";stopReq=true;return "stop"}
     if(stopReq)return "stop";
-    var out=Core.isMatch(res.alts,w)?"ok":(Core.command(res.alts)||"wrong");
+    var out=Core.isMatch(res.alts,w)?"ok":(Core.command(res.last,w)||"wrong");
     if(DBG[0])DBG[0].res=out==="ok"?"erkannt":out==="wrong"?"nicht erkannt":out;if($("dbgd").open)renderDbg();
     return out;
   }
@@ -497,6 +523,7 @@ if(typeof module!=="undefined")module.exports=Core;
   bindRange("nMax",function(x){return String(x)});
   ["vEn","vDe"].forEach(function(id){$(id).addEventListener("change",function(){cfg[id]=this.value;saveCfg();speak(id==="vEn"?"airway":"Atemweg",id==="vEn"?"en":"de")})});
   ["A","M","T"].forEach(function(k){var el=$("c"+k);el.checked=!!cfg.cats[k];el.addEventListener("change",function(){cfg.cats[k]=el.checked?1:0;saveCfg()})});
+  $("recL").value=cfg.recLang||"en-US";$("recL").addEventListener("change",function(){cfg.recLang=this.value;saveCfg()});
   $("show").checked=cfg.show;$("show").addEventListener("change",function(){cfg.show=this.checked;saveCfg();if(!cfg.show)wordEl.innerHTML=""});
   $("reset").addEventListener("click",function(){if(confirm("Gesamten Lernfortschritt und ausgeschlossene Wörter löschen?")){st=Core.emptyState();save();render()}});
   if(!SR||!synth){var w=$("warn");w.textContent="Dieser Browser unterstützt keine Spracherkennung"+(synth?"":" bzw. Sprachausgabe")+". Bitte Safari (iPhone/Mac, Siri eingeschaltet) oder Chrome verwenden.";w.classList.remove("hide")}
