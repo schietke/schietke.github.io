@@ -90,13 +90,18 @@ button.s{border:1px solid var(--border);background:var(--bg);color:var(--text);b
 <section class="card">
   <details id="setd"><summary>Einstellungen</summary>
   <div style="margin-top:8px">
+    <div class="set"><label for="engine">Spracherkennung</label><select id="engine"><option value="xai">xAI (empfohlen)</option><option value="safari">Safari (ohne Konto)</option></select></div>
+    <div id="keyRow">
+      <div class="set"><label for="xkey">xAI-API-Schlüssel</label><input id="xkey" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="xai-…" style="flex:1;max-width:58%;font-size:.9rem;padding:7px;border-radius:10px;border:1px solid var(--border);background:var(--bg);color:var(--text)"></div>
+      <p class="cmds" style="margin:2px 0 8px">Schlüssel anlegen unter <b>console.x.ai</b> (API Keys). Dort unbedingt ein <b>Ausgabelimit</b> setzen. Der Schlüssel bleibt nur auf diesem Gerät gespeichert.</p>
+    </div>
     <div class="set"><label for="rate">Sprechtempo</label><input id="rate" type="range" min="0.6" max="1.3" step="0.05"><span class="v" id="rateV"></span></div>
     <div class="set"><label for="wait">Antwortzeit</label><input id="wait" type="range" min="4" max="15" step="1"><span class="v" id="waitV"></span></div>
     <div class="set"><label for="nNew">Neue je Durchgang</label><input id="nNew" type="range" min="0" max="20" step="1"><span class="v" id="nNewV"></span></div>
     <div class="set"><label for="nMax">Max. Abfragen</label><input id="nMax" type="range" min="10" max="100" step="5"><span class="v" id="nMaxV"></span></div>
     <div class="set"><label for="vEn">Englische Stimme</label><select id="vEn"></select></div>
     <div class="set"><label for="vDe">Deutsche Stimme</label><select id="vDe"></select></div>
-    <div class="set"><label for="recL">Erkennung</label><select id="recL"><option value="en-US">Englisch (USA)</option><option value="en-GB">Englisch (UK)</option></select></div>
+    <div class="set"><label for="recL">Safari-Sprache</label><select id="recL"><option value="en-US">Englisch (USA)</option><option value="en-GB">Englisch (UK)</option></select></div>
     <div class="set"><label>Themen</label><span class="chk"><label><input type="checkbox" id="cA"> Anästhesie</label><label><input type="checkbox" id="cM"> Medizin</label><label><input type="checkbox" id="cT"> Reisen</label></span></div>
     <div class="set"><label for="show">Wort anzeigen</label><input id="show" type="checkbox"></div>
     <div class="set"><span>Fortschritt</span><button class="s" id="reset" type="button">Zurücksetzen</button></div>
@@ -218,6 +223,21 @@ var Core=(function(){
     if(w){var pc=phon(h.replace(/ /g,""));var ts=targets(w);for(var i=0;i<ts.length;i++){var pt=phon(ts[i]);if(pt===pc||lev(pt,pc)<=1||ts[i].split(" ").indexOf(h)>=0)return null}}
     return c;
   }
+  // Hinweiswörter für xAI-Transkription: Ziel + Alternativen, ähnlich klingende Vokabeln, andere Wörter der Runde, Befehle.
+  // (Nicht nur das Ziel – sonst „hört“ das Modell das Ziel womöglich auch, wenn etwas anderes gesagt wurde.)
+  function keyterms(w,vocab,sessionWords){
+    var out=[],seen={};
+    function add(t){t=String(t||"").trim();if(!t||t.length>50)return;var k=t.toLowerCase();if(seen[k])return;seen[k]=1;out.push(t)}
+    add(w.en);(w.alt||[]).forEach(add);
+    if(vocab){
+      var pt=phon(canon(w.en));
+      vocab.filter(function(o){return o.id!==w.id}).map(function(o){return [lev(phon(canon(o.en)),pt),o.en]})
+        .sort(function(a,b){return a[0]-b[0]}).slice(0,6).forEach(function(x){add(x[1])});
+    }
+    (sessionWords||[]).filter(function(o){return o.id!==w.id}).slice(0,10).forEach(function(o){add(o.en)});
+    ["remove","repeat","stop"].forEach(add);
+    return out.slice(0,100);
+  }
   function dayNum(d){d=d||new Date();return Math.floor((d.getTime()-d.getTimezoneOffset()*60000)/86400000)}
   function emptyState(){return {v:1,cards:{},ex:{},hist:[]}}
   function introduce(st,id,today){if(!st.cards[id])st.cards[id]={b:1,due:today,n:0}}
@@ -266,7 +286,7 @@ var Core=(function(){
     });
     return r;
   }
-  return {phon:phon,setVocab:setVocab,canon:canon,lev:lev,isMatch:isMatch,command:command,dayNum:dayNum,emptyState:emptyState,
+  return {keyterms:keyterms,phon:phon,setVocab:setVocab,canon:canon,lev:lev,isMatch:isMatch,command:command,dayNum:dayNum,emptyState:emptyState,
     introduce:introduce,grade:grade,exclude:exclude,restore:restore,pickNew:pickNew,dueList:dueList,counts:counts,INTERVALS:INTERVALS};
 })();
 if(typeof module!=="undefined")module.exports=Core;
@@ -281,7 +301,7 @@ if(typeof module!=="undefined")module.exports=Core;
   var st,cfg;
   try{st=JSON.parse(localStorage.getItem(KEY))}catch(e){}
   if(!st||!st.cards)st=Core.emptyState();
-  var DEF={rate:0.9,wait:8,nNew:10,nMax:40,vEn:"",vDe:"",recLang:"en-US",cats:{A:1,M:1,T:1},show:true};
+  var DEF={rate:0.9,wait:8,nNew:10,nMax:40,vEn:"",vDe:"",recLang:"en-US",engine:"xai",cats:{A:1,M:1,T:1},show:true};
   try{cfg=Object.assign({},DEF,JSON.parse(localStorage.getItem(SKEY))||{})}catch(e){cfg=Object.assign({},DEF)}
   function save(){try{localStorage.setItem(KEY,JSON.stringify(st))}catch(e){}}
   function saveCfg(){try{localStorage.setItem(SKEY,JSON.stringify(cfg))}catch(e){}}
@@ -385,6 +405,83 @@ if(typeof module!=="undefined")module.exports=Core;
       try{r.start()}catch(e){err="start";finish("Startfehler")}
     });
   }
+  /* ---------- xAI-Erkennung (Aufnahme im Browser, Transkription per REST) ---------- */
+  var XAI_URL="https://api.x.ai/v1/stt",mic=null,actx=null,useXai=false,xaiFails=0,sessionWords=[];
+  function canRecord(){return !!(navigator.mediaDevices&&navigator.mediaDevices.getUserMedia&&window.MediaRecorder)}
+  function recMime(){var c=["audio/mp4;codecs=mp4a.40.2","audio/webm;codecs=opus","audio/mp4","audio/webm","audio/ogg;codecs=opus"];for(var i=0;i<c.length;i++){try{if(MediaRecorder.isTypeSupported(c[i]))return c[i]}catch(e){}}return ""}
+  function primeAudio(){ // in der Tipp-Geste aufrufen (iOS)
+    try{var AC=window.AudioContext||window.webkitAudioContext;if(AC){if(!actx)actx=new AC();if(actx.state==="suspended")actx.resume()}}catch(e){}
+    try{if(navigator.audioSession)navigator.audioSession.type="play-and-record"}catch(e){}
+  }
+  async function openMic(){
+    if(mic)return mic;
+    var stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true,channelCount:1}});
+    var src=actx.createMediaStreamSource(stream),an=actx.createAnalyser();an.fftSize=1024;src.connect(an);
+    mic={stream:stream,an:an,buf:new Float32Array(an.fftSize)};return mic;
+  }
+  function closeMic(){if(mic){try{mic.stream.getTracks().forEach(function(t){t.stop()})}catch(e){}mic=null}try{if(navigator.audioSession)navigator.audioSession.type="auto"}catch(e){}}
+  function rms(){mic.an.getFloatTimeDomainData(mic.buf);var s=0,b=mic.buf;for(var i=0;i<b.length;i++)s+=b[i]*b[i];return Math.sqrt(s/b.length)}
+  // Nimmt eine Antwort auf: endet ~1,2 s nach Sprechende oder nach der Antwortzeit. Ohne erkannte Sprache kein API-Aufruf.
+  function record(ms){
+    return new Promise(function(res){
+      var mime=recMime(),chunks=[],mr;
+      try{mr=mime?new MediaRecorder(mic.stream,{mimeType:mime}):new MediaRecorder(mic.stream)}catch(e){res({err:"recorder"});return}
+      var t0=Date.now(),floor=Infinity,peak=0,speech=false,above=0,lastVoice=0,tSpeech=0,iv;
+      mr.ondataavailable=function(e){if(e.data&&e.data.size)chunks.push(e.data)};
+      mr.onstop=function(){clearInterval(iv);setMic(false);
+        res({blob:new Blob(chunks,{type:mr.mimeType||mime||"audio/mp4"}),speech:speech,peak:peak,floor:floor,dur:Date.now()-t0,tSpeech:tSpeech?tSpeech-t0:0})};
+      try{mr.start()}catch(e){res({err:"recorder"});return}
+      setMic(true);
+      iv=setInterval(function(){
+        var v=rms(),now=Date.now();if(v>peak)peak=v;if(v<floor)floor=v;
+        var thr=Math.max(0.012,floor*2.5);
+        if(v>thr){above++;lastVoice=now;if(above>=3&&!speech){speech=true;tSpeech=now}}else above=0;
+        var stop=(speech&&now-lastVoice>1200)||(now-t0>ms)||stopReq||(!speech&&now-t0>ms);
+        if(stop){clearInterval(iv);try{mr.stop()}catch(e){res({err:"recorder"})}}
+      },20);
+    });
+  }
+  async function transcribe(blob,w){
+    var fd=new FormData(),ext=/webm/.test(blob.type)?"webm":/ogg/.test(blob.type)?"ogg":"m4a";
+    fd.append("model","grok-voice-transcribe-2.0");fd.append("language","en");
+    Core.keyterms(w,VOCAB,sessionWords).forEach(function(k){fd.append("keyterm",k)});
+    fd.append("file",blob,"antwort."+ext); // file muss das letzte Feld sein
+    var ctl=window.AbortController?new AbortController():null,to=setTimeout(function(){if(ctl)ctl.abort()},12000);
+    try{
+      var r=await fetch(XAI_URL,{method:"POST",headers:{Authorization:"Bearer "+xaiKey()},body:fd,signal:ctl?ctl.signal:undefined});
+      clearTimeout(to);
+      var body=null;try{body=await r.json()}catch(e){}
+      if(!r.ok){var msg=body&&(body.error||body.message||body.code)||"";return {http:r.status,msg:String(msg)}}
+      return {http:200,text:(body&&body.text)||""};
+    }catch(e){clearTimeout(to);return {http:0,msg:e&&e.name==="AbortError"?"Zeitüberschreitung":"keine Verbindung"}}
+  }
+  function xaiProblem(http,msg){
+    if(http===401||http===403||(http===400&&/api key/i.test(msg)))return "Der xAI-API-Schlüssel wird nicht akzeptiert. Bitte in den Einstellungen prüfen. Für diesen Durchgang wird die Safari-Erkennung verwendet.";
+    if(http===402||http===429||/credit|balance|spend|limit|quota/i.test(msg))return "xAI meldet: kein Guthaben oder Limit erreicht (console.x.ai). Für diesen Durchgang wird die Safari-Erkennung verwendet.";
+    if(http===0)return "Keine Verbindung zu xAI. Nach zwei Versuchen wird für diesen Durchgang die Safari-Erkennung verwendet.";
+    return "xAI-Fehler (HTTP "+http+"). Für diesen Durchgang wird die Safari-Erkennung verwendet.";
+  }
+  function warnMsg(m){var w=$("warn");w.textContent=m;w.classList.remove("hide")}
+  async function listenXai(ms,w,label){
+    var rec=await record(ms);
+    if(rec.err){useXai=false;warnMsg("Aufnahme nicht möglich. Für diesen Durchgang wird die Safari-Erkennung verwendet.");dbg({w:label,alts:[],info:"xAI · Aufnahmefehler"});return {alts:[],err:null,last:""}}
+    var base="xAI · Aufnahme "+(rec.dur/1000).toFixed(1)+" s · Sprache ab "+(rec.tSpeech||"–")+" ms · Pegel "+rec.peak.toFixed(3)+"/"+(isFinite(rec.floor)?rec.floor.toFixed(3):"–");
+    if(stopReq)return {alts:[],err:null,last:""};
+    if(!rec.speech&&rec.peak<0.03){dbg({w:label,alts:[],info:base+" · keine Sprache erkannt (kein API-Aufruf)"});return {alts:[],err:null,last:""}}
+    var t1=Date.now();phase(phaseTxt);
+    var r=await transcribe(rec.blob,w),lat=Date.now()-t1;
+    if(r.http!==200){
+      var fatalKey=r.http!==0;xaiFails++;
+      if(fatalKey||xaiFails>=2)useXai=false;
+      warnMsg(xaiProblem(r.http,r.msg||""));
+      dbg({w:label,alts:[],info:base+" · HTTP "+r.http+" "+(r.msg||"")+" · "+lat+" ms"});
+      return {alts:[],err:null,last:""};
+    }
+    xaiFails=0;
+    var txt=(r.text||"").trim();heardEl.textContent=txt?"„"+txt+"“":"";
+    dbg({w:label,alts:txt?[txt]:[],info:base+" · Antwort "+lat+" ms · "+(rec.blob.size/1024).toFixed(0)+" KB"});
+    return {alts:txt?[txt]:[],err:null,last:txt};
+  }
   function setMic(on){statusEl.innerHTML=on?'<span class="mic"></span>'+phaseTxt:phaseTxt}
 
   /* ---------- Wach halten ---------- */
@@ -420,7 +517,8 @@ if(typeof module!=="undefined")module.exports=Core;
     heardEl.textContent="";
     // kurze Pause nach der Sprachausgabe, damit das Mikrofon nicht das Ende der eigenen Ansage aufnimmt
     await new Promise(function(r){setTimeout(r,40)});
-    var res=await listen(cfg.wait*1000,function(a){return Core.isMatch(a,w)},w.de+" → "+w.en);
+    var res=useXai&&mic?await listenXai(cfg.wait*1000,w,w.de+" → "+w.en):await listen(cfg.wait*1000,function(a){return Core.isMatch(a,w)},w.de+" → "+w.en);
+    if(!useXai&&!SR){fatal="unsupported";stopReq=true;return "stop"}
     if(res.err&&res.err!=="unsupported"&&/not-allowed|service-not-allowed|audio-capture/.test(res.err)){fatal=res.err;stopReq=true;return "stop"}
     if(res.err==="network"){fatal="network";stopReq=true;return "stop"}
     if(stopReq)return "stop";
@@ -466,6 +564,12 @@ if(typeof module!=="undefined")module.exports=Core;
     running=true;stopReq=false;fatal=null;setBtn();wake(true);
     var news=cfg.nNew>0?Core.pickNew(st,VOCAB,cfg.nNew,cfg.cats):[];
     var newIds=news.map(function(w){return w.id});
+    sessionWords=news.concat(Core.dueList(st,VOCAB,today(),cfg.nMax));
+    // xAI: Mikrofon einmal pro Durchgang öffnen (kein Startverzug, keine wiederholte Freigabe)
+    useXai=false;xaiFails=0;
+    if(cfg.engine==="xai"&&xaiKey()&&canRecord()){
+      openMic().then(function(){useXai=true}).catch(function(e){useXai=false;warnMsg("Kein Mikrofonzugriff für die xAI-Erkennung ("+(e&&e.name||"Fehler")+"). Für diesen Durchgang wird die Safari-Erkennung verwendet.")});
+    }
     try{
       if(news.length){
         phase("Neue Vokabeln");
@@ -486,13 +590,15 @@ if(typeof module!=="undefined")module.exports=Core;
       }
     }catch(e){console.error(e)}
     if(curRec)try{curRec.abort()}catch(e){}
+    closeMic();useXai=false;
     if(fatal)showFatal(fatal);
     if(synth)synth.cancel();
-    if(document.visibilityState==="visible")await de("Ende.");
+    if(document.visibilityState==="visible")await de(fatal?"Fehler.":"Ende.");
     running=false;wake(false);setBtn();phase(fatal?"Abgebrochen":"Bereit");showWord(null);heardEl.textContent="";render();
   }
   function showFatal(e){
-    var m=e==="network"?"Die Spracherkennung braucht eine Internetverbindung (Safari/Chrome senden die Sprache an Apple/Google).":
+    $("warn").dataset.kind="fatal";
+    var m=e==="unsupported"?"Keine Spracherkennung verfügbar: xAI-Schlüssel fehlt oder wurde abgelehnt, und dieser Browser hat keine eigene Erkennung.":e==="network"?"Die Spracherkennung braucht eine Internetverbindung (Safari/Chrome senden die Sprache an Apple/Google).":
       (window.navigator.standalone&&e==="service-not-allowed")?"Apple erlaubt die Spracherkennung nicht in Apps vom Home-Bildschirm. Bitte die Seite direkt in Safari öffnen (Lesezeichen) – dort funktioniert sie.":
       "Kein Zugriff auf Mikrofon oder Spracherkennung. iPhone: Einstellungen › Datenschutz › Mikrofon und Spracherkennung für Safari erlauben; Siri muss eingeschaltet sein.";
     $("warn").textContent=m;$("warn").classList.remove("hide");
@@ -500,8 +606,10 @@ if(typeof module!=="undefined")module.exports=Core;
   function setBtn(){go.className=running?"run":"";go.innerHTML=running?"Stopp<small>oder „stop“ sagen</small>":"Start<small>"+(cfg.nNew>0?cfg.nNew+" neue · dann Abfrage":"Abfrage")+"</small>"}
   go.addEventListener("click",function(){
     if(running){stopReq=true;if(curRec)try{curRec.abort()}catch(e){}if(synth)synth.cancel();return}
-    if(!SR){$("warn").classList.remove("hide");return}
+    var xaiOk=cfg.engine==="xai"&&xaiKey()&&canRecord();
+    if(!SR&&!xaiOk){$("warn").classList.remove("hide");return}
     if(synth){try{synth.cancel()}catch(e){}}
+    if(xaiOk)primeAudio();
     session();
   });
 
@@ -523,11 +631,23 @@ if(typeof module!=="undefined")module.exports=Core;
   bindRange("nMax",function(x){return String(x)});
   ["vEn","vDe"].forEach(function(id){$(id).addEventListener("change",function(){cfg[id]=this.value;saveCfg();speak(id==="vEn"?"airway":"Atemweg",id==="vEn"?"en":"de")})});
   ["A","M","T"].forEach(function(k){var el=$("c"+k);el.checked=!!cfg.cats[k];el.addEventListener("change",function(){cfg.cats[k]=el.checked?1:0;saveCfg()})});
+  var KKEY="vokabel-xai-key";
+  function xaiKey(){try{return (localStorage.getItem(KKEY)||"").trim()}catch(e){return ""}}
+  $("xkey").value=xaiKey();
+  $("xkey").addEventListener("change",function(){try{var v=this.value.trim();if(v)localStorage.setItem(KKEY,v);else localStorage.removeItem(KKEY)}catch(e){}checkEngine()});
+  $("engine").value=cfg.engine||"xai";
+  $("engine").addEventListener("change",function(){cfg.engine=this.value;saveCfg();checkEngine()});
+  function checkEngine(){
+    $("keyRow").style.display=cfg.engine==="xai"?"":"none";
+    var w=$("warn");
+    if(cfg.engine==="xai"&&!xaiKey()){w.textContent="xAI-Spracherkennung ist gewählt, aber kein API-Schlüssel eingetragen (Einstellungen). Bis dahin wird die Safari-Erkennung verwendet.";w.classList.remove("hide")}
+    else if(w.dataset.kind!=="fatal")w.classList.add("hide");
+  }
   $("recL").value=cfg.recLang||"en-US";$("recL").addEventListener("change",function(){cfg.recLang=this.value;saveCfg()});
   $("show").checked=cfg.show;$("show").addEventListener("change",function(){cfg.show=this.checked;saveCfg();if(!cfg.show)wordEl.innerHTML=""});
   $("reset").addEventListener("click",function(){if(confirm("Gesamten Lernfortschritt und ausgeschlossene Wörter löschen?")){st=Core.emptyState();save();render()}});
   if(!SR||!synth){var w=$("warn");w.textContent="Dieser Browser unterstützt keine Spracherkennung"+(synth?"":" bzw. Sprachausgabe")+". Bitte Safari (iPhone/Mac, Siri eingeschaltet) oder Chrome verwenden.";w.classList.remove("hide")}
-  setBtn();render();
+  setBtn();render();checkEngine();
   window.__app={st:function(){return st},Core:Core};
   if("serviceWorker" in navigator)window.addEventListener("load",function(){navigator.serviceWorker.register("./sw.js").catch(function(){})});
 })();
